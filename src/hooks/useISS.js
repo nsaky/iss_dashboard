@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { calculateSpeed } from '../utils/haversine';
 
-// These hit Vite's dev proxy, which forwards to http://api.open-notify.org
-const ISS_API = '/api/iss-now';
-const ASTROS_API = '/api/astros';
-const UPDATE_INTERVAL = 15000; // 15 seconds
+// Using WhereTheISS API: HTTPS native, built-in CORS, works in production (Vercel)
+const ISS_API = 'https://api.wheretheiss.at/v1/satellites/25544';
+const ASTROS_API = 'https://api.allorigins.win/raw?url=' + encodeURIComponent('http://api.open-notify.org/astros.json');
+const UPDATE_INTERVAL = 15000;
 
 export const useISS = () => {
   const [currentPosition, setCurrentPosition] = useState(null);
@@ -12,91 +12,59 @@ export const useISS = () => {
   const [speedHistory, setSpeedHistory] = useState([]);
   const [astronauts, setAstronauts] = useState({ count: 0, names: [] });
   const [isLoading, setIsLoading] = useState(true);
-
-  const prevPositionRef = useRef(null); // { lat, lng, timestamp }
+  
   const isFetchingRef = useRef(false);
 
-  useEffect(() => {
-    let isMounted = true;
-    let intervalId = null;
+  const fetchISSLocation = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
 
-    const fetchAstronauts = async () => {
-      try {
-        const res = await fetch(ASTROS_API);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (isMounted && data && data.people) {
-          setAstronauts({
-            count: data.number || 0,
-            names: data.people.map((p) => p.name),
-          });
-        }
-      } catch (err) {
-        console.error('Astronaut fetch error:', err.message);
-      }
-    };
+    try {
+      const res = await fetch(ISS_API);
+      if (!res.ok) throw new Error(`ISS Fetch Error: ${res.status}`);
+      
+      const data = await res.json();
+      const lat = parseFloat(data.latitude);
+      const lng = parseFloat(data.longitude);
+      const velocity = parseFloat(data.velocity); // km/h
+      const newPos = [lat, lng];
 
-    const fetchISS = async () => {
-      if (isFetchingRef.current) return;
-      isFetchingRef.current = true;
-
-      try {
-        const res = await fetch(ISS_API);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const data = await res.json();
-        if (!isMounted || !data.iss_position) return;
-
-        const lat = parseFloat(data.iss_position.latitude);
-        const lng = parseFloat(data.iss_position.longitude);
-        if (isNaN(lat) || isNaN(lng)) return;
-
-        const newPos = [lat, lng];
-        const timestamp = data.timestamp;
-
-        // Calculate speed using Haversine if we have a previous position
-        if (prevPositionRef.current) {
-          const prev = prevPositionRef.current;
-          const timeDiff = timestamp - prev.timestamp;
-
-          if (timeDiff > 0) {
-            const speed = calculateSpeed(
-              { lat: prev.lat, lng: prev.lng },
-              { lat, lng },
-              timeDiff
-            );
-
-            setSpeedHistory((prevHistory) => [
-              ...prevHistory.slice(-29),
-              { speed, time: new Date().toLocaleTimeString() },
-            ]);
-          }
-        }
-
-        prevPositionRef.current = { lat, lng, timestamp };
-        setCurrentPosition(newPos);
-        setTrajectory((prev) => [...prev.slice(-49), newPos]);
-        setIsLoading(false);
-      } catch (err) {
-        console.error('ISS fetch error:', err.message);
-      } finally {
-        isFetchingRef.current = false;
-      }
-    };
-
-    // Fire immediately on mount
-    fetchAstronauts();
-    fetchISS();
-
-    // Set up interval
-    intervalId = setInterval(fetchISS, UPDATE_INTERVAL);
-
-    // Cleanup
-    return () => {
-      isMounted = false;
-      if (intervalId) clearInterval(intervalId);
-    };
+      setCurrentPosition(newPos);
+      setTrajectory((prev) => [...prev.slice(-49), newPos]);
+      setSpeedHistory((prev) => [
+        ...prev.slice(-29), 
+        { speed: velocity, time: new Date().toLocaleTimeString() }
+      ]);
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Error fetching ISS location:', err);
+    } finally {
+      isFetchingRef.current = false;
+    }
   }, []);
+
+  const fetchAstronauts = useCallback(async () => {
+    try {
+      const res = await fetch(ASTROS_API);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.people) {
+        setAstronauts({
+          count: data.number || 0,
+          names: data.people.map((p) => p.name),
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching astronauts:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAstronauts();
+    fetchISSLocation();
+    const intervalId = setInterval(fetchISSLocation, UPDATE_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [fetchISSLocation, fetchAstronauts]);
 
   return { currentPosition, trajectory, speedHistory, astronauts, isLoading };
 };
