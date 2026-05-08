@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-cream: #fdfcf7;
+  --color-brand-navy: #0f172a;
+  --color-brand-slate: #1e293b;
+  --color-brand-card-light: #ffffff;
+  --color-brand-card-dark: #1e293b;
+}
+
+@layer base {
+  :root {
+    --bg-main: var(--color-brand-cream);
+    --bg-card: var(--color-brand-card-light);
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+  }
+
+  .dark {
+    --bg-main: var(--color-brand-navy);
+    --bg-card: var(--color-brand-card-dark);
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --border-color: #334155;
+  }
+
+  body {
+    @apply bg-[var(--bg-main)] text-[var(--text-main)] transition-colors duration-300;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden;
+  }
+  
+  .stat-box {
+    @apply bg-[var(--bg-main)] p-4 rounded-xl border border-[var(--border-color)];
+  }
+
+  .input-field {
+    @apply w-full px-4 py-2 bg-[var(--bg-main)] border border-[var(--border-color)] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all;
+  }
+}
